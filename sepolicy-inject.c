@@ -1,9 +1,9 @@
-/* 
- * This was derived from public domain works with updates to 
- * work with more modern SELinux libraries. 
- * 
+/*
+ * This was derived from public domain works with updates to
+ * work with more modern SELinux libraries.
+ *
  * It is released into the public domain.
- * 
+ *
  */
 
 #include <getopt.h>
@@ -134,7 +134,7 @@ int add_rule(char *s, char *t, char *c, char *p, int effect, policydb_t *policy)
 	perm_datum_t *perm;
 	avtab_datum_t *av;
 	avtab_key_t key;
-	
+
 	src = hashtab_search(policy->p_types.table, s);
 	if (src == NULL) {
 		fprintf(stderr, "source type %s does not exist\n", s);
@@ -177,14 +177,14 @@ int add_rule(char *s, char *t, char *c, char *p, int effect, policydb_t *policy)
 		if (ret) {
 			fprintf(stderr, "Error inserting into avtab\n");
 			return 1;
-		}	
+		}
 	}
 
 	av->data |= 1U << (perm->s.value - 1);
 
 	return 0;
 }
-	
+
 int add_transition(char *srcS, char *origS, char *tgtS, char *c, policydb_t *policy) {
 	type_datum_t *src, *tgt, *orig;
 	class_datum_t *cls;
@@ -343,7 +343,7 @@ int load_policy(char *filename, policydb_t *policydb, struct policy_file *pf) {
 
 	return 0;
 }
-	
+
 
 int main(int argc, char **argv)
 {
@@ -352,11 +352,11 @@ int main(int argc, char **argv)
 	policydb_t policydb;
 	struct policy_file pf, outpf;
 	sidtab_t sidtab;
-	char ch;
+	unsigned char ch;
 	FILE *fp;
 	int permissive_value = 0, noaudit = 0;
-	
-	
+
+
         struct option long_options[] = {
                 {"attr", required_argument, NULL, 'a'},
                 {"source", required_argument, NULL, 's'},
@@ -373,7 +373,7 @@ int main(int argc, char **argv)
                 {NULL, 0, NULL, 0}
         };
 
-        while ((ch = getopt_long(argc, argv, "a:f:g:s:t:c:p:P:o:Z:z:n", long_options, NULL)) != -1) {
+        while ((ch = getopt_long(argc, argv, "a:f:g:s:t:c:p:P:o:Z:z:n", long_options, NULL)) != 255) {
                 switch (ch) {
                 case 'a':
                         attr = optarg;
@@ -469,19 +469,19 @@ int main(int argc, char **argv)
 		fprintf(stderr, "Could not open outfile\n");
 		return 1;
 	}
-	
+
 	policy_file_init(&outpf);
 	outpf.type = PF_USE_STDIO;
 	outpf.fp = fp;
-	
+
 
 	if (policydb_write(&policydb, &outpf)) {
 		fprintf(stderr, "Could not write policy\n");
 		return 1;
 	}
-	
+
 	policydb_destroy(&policydb);
 	fclose(fp);
-	
+
 	return 0;
 }
