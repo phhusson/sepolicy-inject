@@ -166,40 +166,120 @@ int add_irule(int s, int t, int c, int p, int effect, int not, policydb_t* polic
 	return 0;
 }
 
-int add_rule(char *s, char *t, char *c, char *p, int effect, int not, policydb_t *policy) {
-	type_datum_t *src, *tgt;
-	class_datum_t *cls;
-	perm_datum_t *perm;
+int add_rule_auto(type_datum_t *src, type_datum_t *tgt, class_datum_t *cls, perm_datum_t *perm, int effect, int not, policydb_t *policy) {
+	hashtab_t type_table, class_table, perm_table;
+	hashtab_ptr_t cur;
 
-	src = hashtab_search(policy->p_types.table, s);
+	type_table = policy->p_types.table;
+	class_table = policy->p_classes.table;
+
 	if (src == NULL) {
-		fprintf(stderr, "source type %s does not exist\n", s);
-		return 1;
-	}
-	tgt = hashtab_search(policy->p_types.table, t);
-	if (tgt == NULL) {
-		fprintf(stderr, "target type %s does not exist\n", t);
-		return 1;
-	}
-	cls = hashtab_search(policy->p_classes.table, c);
-	if (cls == NULL) {
-		fprintf(stderr, "class %s does not exist\n", c);
-		return 1;
-	}
-	perm = hashtab_search(cls->permissions.table, p);
-	if (perm == NULL) {
-		if (cls->comdatum == NULL) {
-			fprintf(stderr, "perm %s does not exist in class %s\n", p, c);
-			return 1;
+		for (int i = 0; i < type_table->size; ++i) {
+			cur = type_table->htable[i];
+			while (cur != NULL) {
+				src = cur->datum;
+				if(add_rule_auto(src, tgt, cls, perm, effect, not, policy))
+					return 1;
+				cur = cur->next;
+			}
 		}
-		perm = hashtab_search(cls->comdatum->permissions.table, p);
-		if (perm == NULL) {
-			fprintf(stderr, "perm %s does not exist in class %s\n", p, c);
+	} else if (tgt == NULL) {
+		for (int i = 0; i < type_table->size; ++i) {
+			cur = type_table->htable[i];
+			while (cur != NULL) {
+				tgt = cur->datum;
+				if(add_rule_auto(src, tgt, cls, perm, effect, not, policy))
+					return 1;
+				cur = cur->next;
+			}
+		}
+	} else if (cls == NULL) {
+		for (int i = 0; i < class_table->size; ++i) {
+			cur = class_table->htable[i];
+			while (cur != NULL) {
+				cls = cur->datum;
+				if(add_rule_auto(src, tgt, cls, perm, effect, not, policy))
+					return 1;
+				cur = cur->next;
+			}
+		}
+	} else if (perm == NULL) {
+		perm_table = cls->permissions.table;
+		for (int i = 0; i < perm_table->size; ++i) {
+			cur = perm_table->htable[i];
+			while (cur != NULL) {
+				perm = cur->datum;
+				if(add_irule(src->s.value, tgt->s.value, cls->s.value, perm->s.value, effect, not, policy))
+					return 1;
+				cur = cur->next;
+			}
+		}
+
+		if (cls->comdatum != NULL) {
+			perm_table = cls->comdatum->permissions.table;
+			for (int i = 0; i < perm_table->size; ++i) {
+				cur = perm_table->htable[i];
+				while (cur != NULL) {
+					perm = cur->datum;
+					if(add_irule(src->s.value, tgt->s.value, cls->s.value, perm->s.value, effect, not, policy))
+						return 1;
+					cur = cur->next;
+				}
+			}
+		}
+	} else {
+		return add_irule(src->s.value, tgt->s.value, cls->s.value, perm->s.value, effect, not, policy);
+	}
+	return 0;
+}
+
+int add_rule(char *s, char *t, char *c, char *p, int effect, int not, policydb_t *policy) {
+	type_datum_t *src = NULL, *tgt = NULL;
+	class_datum_t *cls = NULL;
+	perm_datum_t *perm = NULL;
+
+	if (s) {
+		src = hashtab_search(policy->p_types.table, s);
+		if (src == NULL) {
+			fprintf(stderr, "source type %s does not exist\n", s);
 			return 1;
 		}
 	}
 
-	return add_irule(src->s.value, tgt->s.value, cls->s.value, perm->s.value, effect, not, policy);
+	if (t) {
+		tgt = hashtab_search(policy->p_types.table, t);
+		if (tgt == NULL) {
+			fprintf(stderr, "target type %s does not exist\n", t);
+			return 1;
+		}
+	}
+
+	if (c) {
+		cls = hashtab_search(policy->p_classes.table, c);
+		if (cls == NULL) {
+			fprintf(stderr, "class %s does not exist\n", c);
+			return 1;
+		}
+	}
+
+	if (p) {
+		if (c == NULL) {
+			fprintf(stderr, "No class is specified, cannot add perm [%s] \n", p);
+			return 1;
+		}
+
+		if (cls != NULL) {
+			perm = hashtab_search(cls->permissions.table, p);
+			if (perm == NULL && cls->comdatum != NULL) {
+				perm = hashtab_search(cls->comdatum->permissions.table, p);
+			}
+			if (perm == NULL) {
+				fprintf(stderr, "perm %s does not exist in class %s\n", p, c);
+				return 1;
+			}
+		}
+	}
+	return add_rule_auto(src, tgt, cls, perm, effect, not, policy);
 }
 
 int add_typerule(char *s, char *targetAttribute, char **minusses, char *c, char *p, int effect, int not, policydb_t *policy) {
@@ -433,77 +513,11 @@ int load_policy(char *filename, policydb_t *policydb, struct policy_file *pf) {
 	return 0;
 }
 
-int auto_allow(type_datum_t *src, type_datum_t *tgt, class_datum_t *cls, policydb_t *policy) {
-	perm_datum_t *perm;
-	hashtab_t type_table, class_table, perm_table;
-	hashtab_ptr_t cur;
-	
-	type_table = policy->p_types.table;
-	class_table = policy->p_classes.table;
-
-	if (src == NULL) {
-		for (int i = 0; i < type_table->size; ++i) {
-			cur = type_table->htable[i];
-			while (cur != NULL) {
-				src = cur->datum;
-				if(auto_allow(src, tgt, cls, policy))
-					return 1;
-				cur = cur->next;
-			}
-		}
-	} else if (tgt == NULL) {
-		for (int i = 0; i < type_table->size; ++i) {
-			cur = type_table->htable[i];
-			while (cur != NULL) {
-				tgt = cur->datum;
-				if(auto_allow(src, tgt, cls, policy))
-					return 1;
-				cur = cur->next;
-			}
-		}
-	} else if (cls == NULL) {
-		for (int i = 0; i < class_table->size; ++i) {
-			cur = class_table->htable[i];
-			while (cur != NULL) {
-				cls = cur->datum;
-				if(auto_allow(src, tgt, cls, policy))
-					return 1;
-				cur = cur->next;
-			}
-		}
-	} else {
-		perm_table = cls->permissions.table;
-		for (int i = 0; i < perm_table->size; ++i) {
-			cur = perm_table->htable[i];
-			while (cur != NULL) {
-				perm = cur->datum;
-				if(add_irule(src->s.value, tgt->s.value, cls->s.value, perm->s.value, AVTAB_ALLOWED, 0, policy))
-					return 1;
-				cur = cur->next;
-			}
-		}
-
-		if (cls->comdatum != NULL) {
-			perm_table = cls->comdatum->permissions.table;
-			for (int i = 0; i < perm_table->size; ++i) {
-				cur = perm_table->htable[i];
-				while (cur != NULL) {
-					perm = cur->datum;
-					if(add_irule(src->s.value, tgt->s.value, cls->s.value, perm->s.value, AVTAB_ALLOWED, 0, policy))
-						return 1;
-					cur = cur->next;
-				}
-			}
-		}
-	}
-	return 0;
-}
-
 int main(int argc, char **argv)
 {
 	char *policy = NULL, *source = NULL, *target = NULL, *class = NULL, *perm = NULL;
 	char *fcon = NULL, *outfile = NULL, *permissive = NULL, *attr = NULL, *filetrans = NULL;
-	int exists = 0, not = 0, autoAllow = 0;
+	int exists = 0, not = 0;
 	policydb_t policydb;
 	struct policy_file pf, outpf;
 	sidtab_t sidtab;
@@ -526,7 +540,6 @@ int main(int argc, char **argv)
 		{"permissive", required_argument, NULL, 'Z'},
 		{"not-permissive", required_argument, NULL, 'z'},
 		{"not", no_argument, NULL, 0},
-		{"auto", no_argument, NULL, 0},
 		{NULL, 0, NULL, 0}
 	};
 
@@ -536,8 +549,6 @@ int main(int argc, char **argv)
 			case 0:
 				if(strcmp(long_options[option_index].name, "not") == 0)
 					not = 1;
-				else if(strcmp(long_options[option_index].name, "auto") == 0)
-					autoAllow = 1;
 				else
 					usage(argv[0]);
 				break;
@@ -587,7 +598,7 @@ int main(int argc, char **argv)
 			}
 	}
 
-	if (((!source || !target || !class || !perm) && !permissive && !fcon && !attr &&!filetrans && !exists && !auto_allow) || !policy)
+	if (((!source || !target || !class || !perm) && !permissive && !fcon && !attr &&!filetrans && !exists) || !policy)
 		usage(argv[0]);
 
 	if(!outfile)
@@ -604,18 +615,7 @@ int main(int argc, char **argv)
 	if (policydb_load_isids(&policydb, &sidtab))
 		return 1;
 
-	if (autoAllow) {
-		type_datum_t *src = NULL, *tgt = NULL;
-		class_datum_t *cls = NULL;
-		if (source)
-			src = hashtab_search(policydb.p_types.table, source);
-		if (target)
-			tgt = hashtab_search(policydb.p_types.table, target);
-		if (class)
-			cls = hashtab_search(policydb.p_classes.table, class);
-		if (auto_allow(src, tgt, cls, &policydb))
-			return 1;
-	} else if (permissive) {
+	if (permissive) {
 		type_datum_t *type;
 		create_domain(permissive, &policydb);
 		type = hashtab_search(policydb.p_types.table, permissive);
@@ -657,23 +657,26 @@ int main(int argc, char **argv)
 			return 1;
 	} else {
 		//Add a rule to a whole set of typeattribute, not just a type
-		if(*target == '=') {
-			char *saveptr = NULL;
+		if (target != NULL) {
+			if(*target == '=') {
+				char *saveptr = NULL;
 
-			char *targetAttribute = strtok_r(target, "-", &saveptr);
+				char *targetAttribute = strtok_r(target, "-", &saveptr);
 
-			char *vals[64];
-			int i = 0;
+				char *vals[64];
+				int i = 0;
 
-			char *m = NULL;
-			while( (m = strtok_r(NULL, "-", &saveptr)) != NULL) {
-				vals[i++] = m;
+				char *m = NULL;
+				while( (m = strtok_r(NULL, "-", &saveptr)) != NULL) {
+					vals[i++] = m;
+				}
+				vals[i] = NULL;
+
+				if(add_typerule(source, targetAttribute+1, vals, class, perm, AVTAB_ALLOWED, not, &policydb))
+					return 1;
 			}
-			vals[i] = NULL;
-
-			if(add_typerule(source, targetAttribute+1, vals, class, perm, AVTAB_ALLOWED, not, &policydb))
-				return 1;
-		} else {
+		}
+		if (perm != NULL) {
 			char *saveptr = NULL;
 
 			char *p = strtok_r(perm, ",", &saveptr);
@@ -683,6 +686,11 @@ int main(int argc, char **argv)
 					return 1;
 				}
 			} while( (p = strtok_r(NULL, ",", &saveptr)) != NULL);
+		} else {
+			if (add_rule(source, target, class, perm, AVTAB_ALLOWED, not, &policydb)) {
+				fprintf(stderr, "Could not add rule\n");
+				return 1;
+			}
 		}
 	}
 
