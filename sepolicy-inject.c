@@ -9,6 +9,7 @@
 #include <getopt.h>
 #include <unistd.h>
 #include <stdlib.h>
+#include <stdint.h>
 #include <sys/mman.h>
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -174,7 +175,7 @@ int add_rule_auto(type_datum_t *src, type_datum_t *tgt, class_datum_t *cls, perm
 	class_table = policy->p_classes.table;
 
 	if (src == NULL) {
-		for (int i = 0; i < type_table->size; ++i) {
+		for (unsigned i = 0; i < type_table->size; ++i) {
 			cur = type_table->htable[i];
 			while (cur != NULL) {
 				src = cur->datum;
@@ -184,7 +185,7 @@ int add_rule_auto(type_datum_t *src, type_datum_t *tgt, class_datum_t *cls, perm
 			}
 		}
 	} else if (tgt == NULL) {
-		for (int i = 0; i < type_table->size; ++i) {
+		for (unsigned i = 0; i < type_table->size; ++i) {
 			cur = type_table->htable[i];
 			while (cur != NULL) {
 				tgt = cur->datum;
@@ -194,7 +195,7 @@ int add_rule_auto(type_datum_t *src, type_datum_t *tgt, class_datum_t *cls, perm
 			}
 		}
 	} else if (cls == NULL) {
-		for (int i = 0; i < class_table->size; ++i) {
+		for (unsigned i = 0; i < class_table->size; ++i) {
 			cur = class_table->htable[i];
 			while (cur != NULL) {
 				cls = cur->datum;
@@ -205,7 +206,7 @@ int add_rule_auto(type_datum_t *src, type_datum_t *tgt, class_datum_t *cls, perm
 		}
 	} else if (perm == NULL) {
 		perm_table = cls->permissions.table;
-		for (int i = 0; i < perm_table->size; ++i) {
+		for (unsigned i = 0; i < perm_table->size; ++i) {
 			cur = perm_table->htable[i];
 			while (cur != NULL) {
 				perm = cur->datum;
@@ -217,7 +218,7 @@ int add_rule_auto(type_datum_t *src, type_datum_t *tgt, class_datum_t *cls, perm
 
 		if (cls->comdatum != NULL) {
 			perm_table = cls->comdatum->permissions.table;
-			for (int i = 0; i < perm_table->size; ++i) {
+			for (unsigned i = 0; i < perm_table->size; ++i) {
 				cur = perm_table->htable[i];
 				while (cur != NULL) {
 					perm = cur->datum;
@@ -304,7 +305,7 @@ int add_typerule(char *s, char *targetAttribute, char **minusses, char *c, char 
 	if(tgt->flavor != TYPE_ATTRIB)
 		exit(1);
 
-	for(int i=0; minusses && minusses[i]; ++i) {
+	for(unsigned i=0; minusses && minusses[i]; ++i) {
 		type_datum_t *obj;
 		obj = hashtab_search(policy->p_types.table, minusses[i]);
 		if (obj == NULL) {
@@ -335,15 +336,15 @@ int add_typerule(char *s, char *targetAttribute, char **minusses, char *c, char 
 	}
 
 	ebitmap_node_t *node;
-	int i;
+	unsigned i;
 
 	int ret = 0;
 
 	ebitmap_for_each_bit(&policy->attr_type_map[tgt->s.value-1], node, i) {
 		if(ebitmap_node_get_bit(node, i)) {
 			int found = 0;
-			for(int j=0; m[j] != -1; ++j) {
-				if(i == m[j])
+			for(unsigned j=0; m[j] != -1; ++j) {
+				if(i == (unsigned)m[j])
 					found = 1;
 			}
 
@@ -456,7 +457,7 @@ int add_type(char *domainS, char *typeS, policydb_t *policy) {
 	int typeId = get_attr_id(typeS, policy);
 	//Now let's update all constraints!
 	//(kernel doesn't support (yet?) type_names rules)
-	for(int i=0; i<policy->p_classes.nprim; ++i) {
+	for(uint32_t i=0; i < policy->p_classes.nprim; ++i) {
 		class_datum_t *cl = policy->class_val_to_struct[i];
 		for(constraint_node_t *n = cl->constraints; n ; n=n->next) {
 			for(constraint_expr_t *e = n->expr; e; e=e->next) {
