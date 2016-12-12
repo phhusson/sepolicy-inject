@@ -48,7 +48,8 @@ static void usage(const char *arg0)
 	pr_err("\tCheck if a SELinux type exists\n");
 	pr_err("%s -e -c <class> -P <policy file>", arg0);
 	pr_err("\tCheck if a SELinux class exists\n");
-	pr_err("All options can add -o <output file> to output to another file\n");
+	pr_err("All options can add -o <output file> to output to another file");
+	pr_err("If -P is combined with --live the modified input policy becomes live");
 	exit(1);
 }
 
@@ -638,7 +639,7 @@ int main(int argc, char **argv)
 	char *source = NULL, *target = NULL,
 		*class = NULL, *perm = NULL, *fcon = NULL,
 		*permissive = NULL, *attr = NULL;
-	int ch, ret = 0, info = 0, exists = 0, live = 0,
+	int ch, ret = 0, info = 0, exists = 0, live = 0, save_only = 0,
 		not = 0, permissive_value = 0, noaudit = 0;
 	sidtab_t sidtab;
 	policydb_t policydb;
@@ -728,17 +729,19 @@ int main(int argc, char **argv)
 		}
 	}
 
-	if (!policy || (live && policy))
-		/* we can only load one policy */
+	if (!policy && !live)
+		/* we need to specify at least one policy */
 		usage(argv[0]);
 
-	if (live)
-		policy = policy_live;
-
 	if (!source && !target && !class && !perm && !permissive && !fcon &&
-	    !fcon && !attr && !filetrans && !exists && !noaudit && !outfile) {
-		/* just load policy and show info if only -P or --live */
-		info = 1;
+	    !fcon && !attr && !filetrans && !exists && !noaudit) {
+		/* no modifications to be made */
+		if ((live && policy) || outfile)
+			/* just save or apply the parsed policy */
+			save_only = 1;
+		else
+			/* only print policy information */
+			info = 1;
 	} else if (exists) {
 		/* we can currently only check for existence of source/class */
 		if (!source && !class)
@@ -757,6 +760,9 @@ int main(int argc, char **argv)
 		/* not enough params to create a domain or rule */
 		usage(argv[0]);
 	}
+
+	if (live && !policy)
+		policy = policy_live;
 
 	sepol_set_policydb(&policydb);
 	sepol_set_sidtab(&sidtab);
@@ -779,6 +785,9 @@ int main(int argc, char **argv)
 
 	if (!outfile && !live)
 		outfile = policy;
+
+	if (save_only)
+		goto save;
 
 	if (exists) {
 		if (source) {
@@ -905,13 +914,18 @@ int main(int argc, char **argv)
 	printf("New policy: ");
 	print_policy_info(&policydb, stdout);
 
+save:
 	if (outfile) {
 		ret = write_policy_to_file(&policydb, outfile);
 		goto exit;
 	}
 
-	if (live)
-		ret = apply_policy(&policydb);
+	if (live) {
+		if ((ret = apply_policy(&policydb)))
+			pr_err("Could not apply live policy");
+		else
+			pr_info("The policy is now live");
+	}
 
 exit:
 	policydb_destroy(&policydb);
