@@ -626,8 +626,7 @@ static int write_policy_to_file(policydb_t *policydb, const char *filename) {
 	pf.type = PF_USE_STDIO;
 	pf.fp = fp;
 
-	if ((ret = policydb_write(policydb, &pf)))
-		pr_err("Could not write policy to file '%s'", filename);
+	ret = policydb_write(policydb, &pf);
 
 	fclose(fp);
 	return ret;
@@ -899,7 +898,7 @@ int main(int argc, char **argv)
 			} while ((p = strtok_r(NULL, ",", &saveptr)));
 		} else {
 			if ((ret = add_rule(source, target, class, NULL,
-				     AVTAB_ALLOWED, not, &policydb))) {
+					    AVTAB_ALLOWED, not, &policydb))) {
 				pr_err("Could not add rule");
 				goto exit;
 			}
@@ -916,12 +915,20 @@ int main(int argc, char **argv)
 
 save:
 	if (outfile) {
-		ret = write_policy_to_file(&policydb, outfile);
-		goto exit;
+		if (ret) /* previous fail from where? unsafe to write */
+			pr_err("Refusing to write policy to file "
+			       "(ret = %d)", ret);
+		else if ((ret = write_policy_to_file(&policydb, outfile)))
+			pr_err("Could not write policy to file '%s'", outfile);
+		else
+			pr_info("Wrote policy to file '%s'", outfile);
 	}
 
 	if (live) {
-		if ((ret = apply_policy(&policydb)))
+		if (ret) /* if file write failed, assume apply live will too */
+			pr_err("Refusing to apply live policy "
+			       "(ret = %d)", ret);
+		else if ((ret = apply_policy(&policydb)))
 			pr_err("Could not apply live policy");
 		else
 			pr_info("The policy is now live");
