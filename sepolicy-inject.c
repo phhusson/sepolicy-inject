@@ -24,6 +24,9 @@
 #include <sepol/policydb/conditional.h>
 #include <sepol/policydb/constraint.h>
 
+#define pr_info(fmt, ...) fprintf(stdout, fmt "\n", ##__VA_ARGS__)
+#define pr_err(fmt, ...)  fprintf(stderr, fmt "\n", ##__VA_ARGS__)
+
 static const char policy_load[] = "/sys/fs/selinux/load";
 static const char policy_live[] = "/sys/fs/selinux/policy";
 
@@ -31,19 +34,19 @@ extern int policydb_index_decls(policydb_t *p);
 
 static void usage(const char *arg0)
 {
-	fprintf(stderr, "%s -s <source type> -t <target type> -c <class> -p <perm_list> -P <policy file>\n", arg0);
-	fprintf(stderr, "\tInject a rule\n\n");
-	fprintf(stderr, "%s -s <source type> -a <type_attribute> -P <policy file>\n", arg0);
-	fprintf(stderr, "\tAdd a type_attribute to a domain\n\n");
-	fprintf(stderr, "%s -Z <source type> -P <policy file>\n", arg0);
-	fprintf(stderr, "\tInject a permissive domain\n\n");
-	fprintf(stderr, "%s -z <source type> -P <policy file>\n", arg0);
-	fprintf(stderr, "\tInject a non-permissive domain\n\n");
-	fprintf(stderr, "%s -e -s <source type> -P <policy file>\n", arg0);
-	fprintf(stderr, "\tCheck if a SELinux type exists\n\n");
-	fprintf(stderr, "%s -e -c <class> -P <policy file>\n", arg0);
-	fprintf(stderr, "\tCheck if a SELinux class exists\n\n");
-	fprintf(stderr, "All options can add -o <output file> to output to another file\n");
+	pr_err("%s -s <source type> -t <target type> -c <class> -p <perm_list> -P <policy file>", arg0);
+	pr_err("\tInject a rule\n");
+	pr_err("%s -s <source type> -a <type_attribute> -P <policy file>", arg0);
+	pr_err("\tAdd a type_attribute to a domain\n");
+	pr_err("%s -Z <source type> -P <policy file>", arg0);
+	pr_err("\tInject a permissive domain\n");
+	pr_err("%s -z <source type> -P <policy file>", arg0);
+	pr_err("\tInject a non-permissive domain\n");
+	pr_err("%s -e -s <source type> -P <policy file>", arg0);
+	pr_err("\tCheck if a SELinux type exists\n");
+	pr_err("%s -e -c <class> -P <policy file>", arg0);
+	pr_err("\tCheck if a SELinux class exists\n");
+	pr_err("All options can add -o <output file> to output to another file\n");
 	exit(1);
 }
 
@@ -51,7 +54,7 @@ static void *cmalloc(const size_t s)
 {
 	void *t = malloc(s);
 	if (!t) {
-		fprintf(stderr, "Out of memory\n");
+		pr_err("Out of memory");
 		exit(ENOMEM);
 	}
 	return t;
@@ -100,7 +103,7 @@ static type_datum_t *create_domain(char *d, policydb_t *policy)
 	type_datum_t *src;
 
 	if ((src = hashtab_search(policy->p_types.table, d))) {
-		printf("Domain '%s' already exists\n", d);
+		pr_info("Domain '%s' already exists", d);
 		return src;
 	}
 
@@ -145,11 +148,11 @@ static type_datum_t *create_domain(char *d, policydb_t *policy)
 	if (set_attr("domain", value, policy))
 		goto fail;
 
-	printf("Created domain '%s'\n", d);
+	pr_info("Created domain '%s'", d);
 
 	return src;
 fail:
-	fprintf(stderr, "Failed to create domain '%s'\n", d);
+	pr_err("Failed to create domain '%s'", d);
 	if (src)
 		free(src);
 	return NULL;
@@ -172,7 +175,7 @@ static int add_irule(const int s, const int t, const int c, const int p,
 		av = cmalloc(sizeof(*av));
 		av->data |= avd;
 		if ((ret = avtab_insert(&policy->te_avtab, &key, av))) {
-			fprintf(stderr, "Error inserting into avtab\n");
+			pr_err("Error inserting into avtab");
 			return ret;
 		}
 	}
@@ -276,19 +279,19 @@ static int add_rule(char *s, char *t, char *c, char *p,
 	perm_datum_t *perm = NULL;
 
 	if (s && !(src = hashtab_search(policy->p_types.table, s))) {
-		fprintf(stderr, "Source type '%s' does not exist\n", s);
+		pr_err("Source type '%s' does not exist", s);
 		ret = EINVAL;
 	}
 	if (t && !(tgt = hashtab_search(policy->p_types.table, t))) {
-		fprintf(stderr, "Target type '%s' does not exist\n", t);
+		pr_err("Target type '%s' does not exist", t);
 		ret = EINVAL;
 	}
 	if (c && !(cls = hashtab_search(policy->p_classes.table, c))) {
-		fprintf(stderr, "Class '%s' does not exist\n", c);
+		pr_err("Class '%s' does not exist", c);
 		ret = EINVAL;
 	}
 	if (p && !c) {
-		fprintf(stderr, "No class is specified, cannot add perm '%s'\n", p);
+		pr_err("No class is specified, cannot add perm '%s'", p);
 		ret = EINVAL;
 	}
 	if (ret)
@@ -300,9 +303,7 @@ static int add_rule(char *s, char *t, char *c, char *p,
 			perm = hashtab_search(cls->comdatum->permissions.table, p);
 
 		if (!perm) {
-			fprintf(stderr,
-				"Perm '%s' does not exist in class '%s'\n",
-				p, c);
+			pr_err("Perm '%s' does not exist in class '%s'", p, c);
 			return EINVAL;
 		}
 	}
@@ -324,15 +325,15 @@ static int add_typerule(char *s, char *a, char **minusses, char *c,
 	int m[64] = { -1 };
 
 	if (!(src = hashtab_search(policy->p_types.table, s))) {
-		fprintf(stderr, "source type '%s' does not exist\n", s);
+		pr_err("Source type '%s' does not exist", s);
 		ret = EINVAL;
 	}
 	if (!(tgt = hashtab_search(policy->p_types.table, a))) {
-		fprintf(stderr, "target type '%s' does not exist\n", a);
+		pr_err("Target type '%s' does not exist", a);
 		ret = EINVAL;
 	}
 	if (!(cls = hashtab_search(policy->p_classes.table, c))) {
-		fprintf(stderr, "class '%s' does not exist\n", c);
+		pr_err("Class '%s' does not exist", c);
 		ret = EINVAL;
 	}
 	if (ret)
@@ -344,8 +345,7 @@ static int add_typerule(char *s, char *a, char **minusses, char *c,
 	for (i = 0; minusses && minusses[i]; ++i) {
 		if (!(obj = hashtab_search(policy->p_types.table,
 					   minusses[i]))) {
-			fprintf(stderr, "minus type '%s' does not exist\n",
-				minusses[i]);
+			pr_err("Minus type '%s' does not exist", minusses[i]);
 			return EINVAL;
 		}
 		m[i] = obj->s.value-1;
@@ -353,16 +353,14 @@ static int add_typerule(char *s, char *a, char **minusses, char *c,
 	}
 
 	if (!cls->comdatum) {
-		fprintf(stderr, "class '%s' has no permissions table\n", c);
+		pr_err("Class '%s' has no permissions table", c);
 		return EINVAL;
 	}
 
 	if (!(perm = hashtab_search(cls->permissions.table, p))) {
 		if (!(perm = hashtab_search(
 				cls->comdatum->permissions.table, p))) {
-			fprintf(stderr,
-				"perm '%s' does not exist in class '%s'\n",
-				p, c);
+			pr_err("Perm '%s' does not exist in class '%s'", p, c);
 			return EINVAL;
 		}
 	}
@@ -398,19 +396,19 @@ static int add_transition(char *srcS, char *origS, char *tgtS,
 	avtab_key_t key;
 
 	if (!(src = hashtab_search(policy->p_types.table, srcS))) {
-		fprintf(stderr, "Source type '%s' does not exist\n", srcS);
+		pr_err("Source type '%s' does not exist", srcS);
 		ret = EINVAL;
 	}
 	if (!(orig = hashtab_search(policy->p_types.table, origS))) {
-		fprintf(stderr, "Origin type '%s' does not exist\n", origS);
+		pr_err("Origin type '%s' does not exist", origS);
 		ret = EINVAL;
 	}
 	if (!(tgt = hashtab_search(policy->p_types.table, tgtS))) {
-		fprintf(stderr, "Target type '%s' does not exist\n", tgtS);
+		pr_err("Target type '%s' does not exist", tgtS);
 		ret = EINVAL;
 	}
 	if (!(cls = hashtab_search(policy->p_classes.table, c))) {
-		fprintf(stderr, "Class '%s' does not exist\n", c);
+		pr_err("Class '%s' does not exist", c);
 		ret = EINVAL;
 	}
 	if (ret)
@@ -426,12 +424,12 @@ static int add_transition(char *srcS, char *origS, char *tgtS,
 		av->data = tgt->s.value;
 
 		if ((ret = avtab_insert(&policy->te_avtab, &key, av))) {
-			fprintf(stderr, "Error inserting into avtab\n");
+			pr_err("Error inserting into avtab");
 			return ret;
 		}
 	} else {
-		fprintf(stderr, "Warning, rule already defined! Won't override.\n");
-		fprintf(stderr, "Previous value = %d, wanted value = %d\n",
+		pr_err("Warning, rule already defined! Won't override.");
+		pr_err("Previous value = %d, wanted value = %d",
 			av->data, tgt->s.value);
 	}
 
@@ -448,19 +446,19 @@ static int add_file_transition(char *srcS, char *origS, char *tgtS,
 	filename_trans_t *new_transition;
 
 	if (!(src = hashtab_search(policy->p_types.table, srcS))) {
-		fprintf(stderr, "Source type '%s' does not exist\n", srcS);
+		pr_err("Source type '%s' does not exist", srcS);
 		ret = EINVAL;
 	}
 	if (!(orig = hashtab_search(policy->p_types.table, origS))) {
-		fprintf(stderr, "Origin type '%s' does not exist\n", origS);
+		pr_err("Origin type '%s' does not exist", origS);
 		ret = EINVAL;
 	}
 	if (!(tgt = hashtab_search(policy->p_types.table, tgtS))) {
-		fprintf(stderr, "Target type '%s' does not exist\n", tgtS);
+		pr_err("Target type '%s' does not exist", tgtS);
 		ret = EINVAL;
 	}
 	if (!(cls = hashtab_search(policy->p_classes.table, c))) {
-		fprintf(stderr, "Class '%s' does not exist\n", c);
+		pr_err("Class '%s' does not exist", c);
 		ret = EINVAL;
 	}
 	if (ret)
@@ -489,7 +487,7 @@ static int add_type(char *domainS, char *typeS, policydb_t *policy)
 	constraint_expr_t *e;
 
 	if (!(domain = hashtab_search(policy->p_types.table, domainS))) {
-		fprintf(stderr, "Domain '%s' does not exist\n", domainS);
+		pr_err("Domain '%s' does not exist", domainS);
 		return EINVAL;
 	}
 
@@ -544,15 +542,13 @@ static int load_policy(const char *filename,
 
 	int fd = open(filename, O_RDONLY);
 	if (fd < 0) {
-		fprintf(stderr, "Can't open '%s':  %s\n",
-			filename, strerror(errno));
+		pr_err("Can't open '%s': %s", filename, strerror(errno));
 		return errno;
 	}
 
 	sz = lseek(fd, 0, SEEK_END);
 	if (sz < 0) {
-		fprintf(stderr, "Can't find size of '%s':  %s\n",
-			filename, strerror(errno));
+		pr_err("Can't get size of '%s': %s", filename, strerror(errno));
 		close(fd);
 		return errno;
 	}
@@ -563,8 +559,7 @@ static int load_policy(const char *filename,
 	close(fd);
 
 	if (map == MAP_FAILED) {
-		fprintf(stderr, "Can't mmap '%s':  %s\n",
-			filename, strerror(errno));
+		pr_err("Can't mmap '%s':  %s", filename, strerror(errno));
 		return errno;
 	}
 
@@ -574,13 +569,12 @@ static int load_policy(const char *filename,
 	pf->len = sz;
 
 	if (policydb_init(policydb)) {
-		fprintf(stderr, "policydb_init: Out of memory!\n");
+		pr_err("policydb_init: Out of memory!");
 		return ENOMEM;
 	}
 
 	if (policydb_read(policydb, pf, 0)) {
-		fprintf(stderr,
-			"error(s) encountered while parsing configuration\n");
+		pr_err("Error(s) encountered while parsing configuration");
 		policydb_destroy(policydb);
 		return EINVAL;
 	}
@@ -594,18 +588,18 @@ static int apply_policy(policydb_t *policydb) {
 	size_t len;
 
 	if ((ret = policydb_to_image(NULL, policydb, &policy, &len))) {
-		fprintf(stderr, "Could not convert policydb to image\n");
+		pr_err("Could not convert policydb to image");
 		return ret;
 	}
 
 	if ((fd = open(policy_load, O_WRONLY)) < 0) {
-		fprintf(stderr, "Could not open '%s' for writing: %s\n",
+		pr_err("Could not open '%s' for writing: %s",
 			policy_load, strerror(errno));
 		return errno;
 	}
 
 	if (write(fd, policy, len) != (ssize_t)len) {
-		fprintf(stderr, "Could not write policy to '%s': %s\n",
+		pr_err("Could not write policy to '%s': %s",
 			policy_load, strerror(errno));
 		ret = errno;
 	}
@@ -620,7 +614,7 @@ static int write_policy_to_file(policydb_t *policydb, const char *filename) {
 	struct policy_file pf;
 
 	if (!(fp = fopen(filename, "w"))) {
-		fprintf(stderr, "Could not open file '%s' for writing: %s\n",
+		pr_err("Could not open file '%s' for writing: %s",
 			filename, strerror(errno));
 		return errno;
 	}
@@ -630,8 +624,7 @@ static int write_policy_to_file(policydb_t *policydb, const char *filename) {
 	pf.fp = fp;
 
 	if ((ret = policydb_write(policydb, &pf)))
-		fprintf(stderr, "Could not write policy to file '%s'\n",
-			filename);
+		pr_err("Could not write policy to file '%s'", filename);
 
 	fclose(fp);
 	return ret;
@@ -767,12 +760,12 @@ int main(int argc, char **argv)
 	sepol_set_sidtab(&sidtab);
 
 	if ((ret = load_policy(policy, &policydb, &pf))) {
-		fprintf(stderr, "Could not load policy from '%s'\n", policy);
+		pr_err("Could not load policy from '%s'", policy);
 		return ret;
 	}
 	if ((ret = policydb_load_isids(&policydb, &sidtab))) {
 		print_policy_info(&policydb, stderr);
-		fprintf(stderr, "Could not load policydb isids\n");
+		pr_err("Could not load policydb isids");
 		goto exit;
 	}
 
@@ -788,13 +781,13 @@ int main(int argc, char **argv)
 	if (exists) {
 		if (source) {
 			type_datum_t *tmp = hashtab_search(policydb.p_types.table, source);
-			printf("Source type '%s' %s in the policy\n", source,
+			pr_info("Source type '%s' %s in the policy", source,
 				tmp ? "exists" : "does not exist");
 			ret |= !!tmp;
 		}
 		if (class) {
 			class_datum_t *tmp = hashtab_search(policydb.p_classes.table, class);
-			printf("Class '%s' %s in the policy\n", class,
+			pr_info("Class '%s' %s in the policy", class,
 				tmp ? "exists" : "does not exist");
 			ret |= !!tmp;
 		}
@@ -803,54 +796,53 @@ int main(int argc, char **argv)
 		type_datum_t *type;
 
 		if (!(type = create_domain(permissive, &policydb))) {
-			fprintf(stderr, "Could not create domain '%s'\n",
-				permissive);
+			pr_err("Could not create domain '%s'", permissive);
 			ret = 1;
 			goto exit;
 		}
 		if ((ret = ebitmap_set_bit(&policydb.permissive_map,
-				    type->s.value, permissive_value))) {
-			fprintf(stderr, "Could not set bit in permissive map\n");
+					   type->s.value, permissive_value))) {
+			pr_err("Could not set bit in permissive map");
 			goto exit;
 		}
-		printf("Set permissive value of domain '%s' to %d\n",
+		pr_info("Set permissive value of domain '%s' to %d",
 			permissive, permissive_value);
 	} else if (filetrans) {
 		if ((ret = add_file_transition(source, fcon, target, class,
 					       filetrans, &policydb))) {
-			fprintf(stderr, "Could not add file transition\n");
+			pr_err("Could not add file transition");
 			goto exit;
 		}
-		printf("Added file transition ("
+		pr_info("Added file transition ("
 			"file name '%s', source type '%s', "
 			"file context '%s', target type '%s', "
-			"class '%s')\n",
+			"class '%s')",
 			filetrans, source, fcon, target, class);
 	} else if (fcon) {
 		if ((ret = add_transition(source, fcon, target,
 					  class, &policydb))) {
-			fprintf(stderr, "Could not add transition\n");
+			pr_err("Could not add transition");
 			goto exit;
 		}
-		printf("Added transition ("
+		pr_info("Added transition ("
 			"source type '%s', file context '%s', "
-			"target type '%s', class '%s')\n",
+			"target type '%s', class '%s')",
 			source, fcon, target, class);
 	} else if (attr) {
 		if ((ret = add_type(source, attr, &policydb))) {
-			fprintf(stderr, "Could not add attr\n");
+			pr_err("Could not add attr");
 			goto exit;
 		}
-		printf("Added attr '%s' to source type '%s'\n", attr, source);
+		pr_info("Added attr '%s' to source type '%s'", attr, source);
 	} else if (noaudit) {
 		if ((ret = add_rule(source, target, class, perm,
 				    AVTAB_AUDITDENY, not, &policydb))) {
-			fprintf(stderr, "Could not add rule\n");
+			pr_err("Could not add rule");
 			goto exit;
 		}
-		printf("Added %s rule ("
+		pr_info("Added %s rule ("
 			"source type '%s', target type '%s', "
-			"class '%s', perm '%s')\n",
+			"class '%s', perm '%s')",
 			not ? "audit" : "noaudit",
 			source, target, class, perm);
 	} else {
@@ -868,12 +860,12 @@ int main(int argc, char **argv)
 			if ((ret = add_typerule(source, a + 1, vals, class,
 						perm, AVTAB_ALLOWED, not,
 						&policydb))) {
-				fprintf(stderr, "Could not add type rule\n");
+				pr_err("Could not add type rule");
 				goto exit;
 			}
-			printf("Added %s type rule ("
+			pr_info("Added %s type rule ("
 				"source type '%s', target type '%s', "
-				"class '%s', perm '%s')\n",
+				"class '%s', perm '%s')",
 				not ? "deny" : "allow",
 				source, a + 1, class, perm);
 		}
@@ -885,24 +877,24 @@ int main(int argc, char **argv)
 				if ((ret = add_rule(source, target, class, p,
 						    AVTAB_ALLOWED, not,
 						    &policydb))) {
-					fprintf(stderr, "Could not add rule\n");
+					pr_err("Could not add rule");
 					goto exit;
 				}
-				printf("Added %s rule ("
+				pr_info("Added %s rule ("
 					"source type '%s', target type '%s', "
-					"class '%s', perm '%s')\n",
+					"class '%s', perm '%s')",
 					not ? "deny" : "allow",
 					source, target, class, p);
 			} while ((p = strtok_r(NULL, ",", &saveptr)));
 		} else {
 			if ((ret = add_rule(source, target, class, NULL,
 				     AVTAB_ALLOWED, not, &policydb))) {
-				fprintf(stderr, "Could not add rule\n");
+				pr_err("Could not add rule");
 				goto exit;
 			}
-			printf("Added %s rule ("
+			pr_info("Added %s rule ("
 				"source type '%s', target type '%s', "
-				"class '%s')\n",
+				"class '%s')",
 				not ? "deny" : "allow",
 				source, target, class);
 		}
