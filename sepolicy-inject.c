@@ -24,6 +24,9 @@
 #include <sepol/policydb/conditional.h>
 #include <sepol/policydb/constraint.h>
 
+static char policy_load[] = "/sys/fs/selinux/load";
+static char policy_live[] = "/sys/fs/selinux/policy";
+
 extern int policydb_index_decls(policydb_t *p);
 
 void usage(const char *arg0)
@@ -583,17 +586,66 @@ int load_policy(const char *filename,
 	return 0;
 }
 
+int apply_policy(policydb_t *policydb) {
+	int fd, ret = 0;
+	void *policy;
+	size_t len;
+
+	if ((ret = policydb_to_image(NULL, policydb, &policy, &len))) {
+		fprintf(stderr, "Could not convert policydb to image\n");
+		return ret;
+	}
+
+	if ((fd = open(policy_load, O_WRONLY)) < 0) {
+		fprintf(stderr, "Could not open '%s' for writing: %s\n",
+			policy_load, strerror(errno));
+		return errno;
+	}
+
+	if (write(fd, policy, len) != (ssize_t)len) {
+		fprintf(stderr, "Could not write policy to '%s': %s\n",
+			policy_load, strerror(errno));
+		ret = errno;
+	}
+
+	close(fd);
+	return ret;
+}
+
+int write_policy_to_file(policydb_t *policydb, const char *filename) {
+	int ret = 0;
+	FILE *fp;
+	struct policy_file pf;
+
+	if (!(fp = fopen(filename, "w"))) {
+		fprintf(stderr, "Could not open file '%s' for writing: %s\n",
+			filename, strerror(errno));
+		return errno;
+	}
+
+	policy_file_init(&pf);
+	pf.type = PF_USE_STDIO;
+	pf.fp = fp;
+
+	if ((ret = policydb_write(policydb, &pf)))
+		fprintf(stderr, "Could not write policy to file '%s'\n",
+			filename);
+
+	fclose(fp);
+	return ret;
+}
+
 int main(int argc, char **argv)
 {
 	char *policy = NULL, *source = NULL, *target = NULL,
 		*class = NULL, *perm = NULL, *fcon = NULL,
 		*outfile = NULL, *permissive = NULL,
 		*attr = NULL, *filetrans = NULL;
-	int ch, ret = 0, info = 0, exists = 0,
+	int ch, ret = 0, info = 0, exists = 0, live = 0,
 		not = 0, permissive_value = 0, noaudit = 0;
 	sidtab_t sidtab;
 	policydb_t policydb;
-	struct policy_file pf, outpf;
+	struct policy_file pf;
 	FILE *fp;
 
 	struct option long_options[] = {
@@ -608,6 +660,7 @@ int main(int argc, char **argv)
 		{"noaudit", no_argument, NULL, 'n'},
 		{"policy", required_argument, NULL, 'P'},
 		{"output", required_argument, NULL, 'o'},
+		{"live", no_argument, NULL, 'L'},
 		{"permissive", required_argument, NULL, 'Z'},
 		{"not-permissive", required_argument, NULL, 'z'},
 		{"not", no_argument, NULL, 0},
@@ -615,14 +668,19 @@ int main(int argc, char **argv)
 	};
 
 	int option_index = -1;
-	while ((ch = getopt_long(argc, argv, "a:c:ef:g:s:t:p:P:o:Z:z:n",
+	while ((ch = getopt_long(argc, argv, "a:c:ef:g:s:t:p:P:o:L:Z:z:n",
 				 long_options, &option_index)) != -1) {
 		switch (ch) {
 		case 0:
-			if (!strcmp(long_options[option_index].name, "not"))
+			if (!strcmp(long_options[option_index].name, "live")) {
+				live = 1;
+				break;
+			}
+			if (!strcmp(long_options[option_index].name, "not")) {
 				not = 1;
-			else
-				usage(argv[0]);
+				break;
+			}
+			usage(argv[0]);
 			break;
 		case 'a':
 			attr = optarg;
@@ -654,6 +712,9 @@ int main(int argc, char **argv)
 		case 'o':
 			outfile = optarg;
 			break;
+		case 'L':
+			live = 1;
+			break;
 		case 'Z':
 			permissive = optarg;
 			permissive_value = 1;
@@ -670,12 +731,16 @@ int main(int argc, char **argv)
 		}
 	}
 
-	if (!policy)
+	if (!policy || (live && policy))
+		/* we can only load one policy */
 		usage(argv[0]);
+
+	if (live)
+		policy = policy_live;
 
 	if (!source && !target && !class && !perm && !permissive && !fcon &&
 	    !fcon && !attr && !filetrans && !exists && !noaudit && !outfile) {
-		/* just load policy and show info if nothing other than -P */
+		/* just load policy and show info if only -P or --live */
 		info = 1;
 	} else if (exists) {
 		/* we can currently only check for existence of source/class */
@@ -700,7 +765,7 @@ int main(int argc, char **argv)
 	sepol_set_sidtab(&sidtab);
 
 	if ((ret = load_policy(policy, &policydb, &pf))) {
-		fprintf(stderr, "Could not load policy\n");
+		fprintf(stderr, "Could not load policy from '%s'\n", policy);
 		return ret;
 	}
 	if ((ret = policydb_load_isids(&policydb, &sidtab))) {
@@ -715,7 +780,7 @@ int main(int argc, char **argv)
 	if (info)
 		goto exit;
 
-	if (!outfile)
+	if (!outfile && !live)
 		outfile = policy;
 
 	if (exists) {
@@ -841,23 +906,16 @@ int main(int argc, char **argv)
 		}
 	}
 
-	if (!(fp = fopen(outfile, "w"))) {
-		fprintf(stderr, "Could not open outfile\n");
-		ret = errno;
-		goto exit;
-	}
-
-	policy_file_init(&outpf);
-	outpf.type = PF_USE_STDIO;
-	outpf.fp = fp;
-
 	printf("New policy: ");
 	print_policy_info(&policydb, stdout);
 
-	if ((ret = policydb_write(&policydb, &outpf)))
-		fprintf(stderr, "Could not write policy\n");
+	if (outfile) {
+		ret = write_policy_to_file(&policydb, outfile);
+		goto exit;
+	}
 
-	fclose(fp);
+	if (live)
+		ret = apply_policy(&policydb);
 
 exit:
 	policydb_destroy(&policydb);
