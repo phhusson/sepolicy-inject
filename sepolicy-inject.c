@@ -36,6 +36,8 @@ static void usage(const char *arg0)
 {
 	pr_err("%s -s <source type> -t <target type> -c <class> -p <perm_list> -P <policy file>", arg0);
 	pr_err("\tInject a rule\n");
+	pr_err("%s -s <source type> -t <target type> -c <class> -p <perm_list> --live", arg0);
+	pr_err("\tInject a rule into the running policy\n");
 	pr_err("%s -s <source type> -a <type_attribute> -P <policy file>", arg0);
 	pr_err("\tAdd a type_attribute to a domain\n");
 	pr_err("%s -Z <source type> -P <policy file>", arg0);
