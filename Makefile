@@ -5,8 +5,8 @@ else
 LIBDIR ?= libs/x86
 endif
 
-CFLAGS ?= -g -Wall -Werror -Wshadow -O2 -pipe -std=gnu11
-LDLIBS=$(LIBDIR)/libsepol.a 
+CFLAGS ?= -g -Wall -Werror -Wshadow -O2 -pipe -std=gnu89
+LDLIBS=$(LIBDIR)/libsepol.a
 
 all: sepolicy-inject
 

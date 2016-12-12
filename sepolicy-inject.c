@@ -24,12 +24,12 @@
 #include <sepol/policydb/conditional.h>
 #include <sepol/policydb/constraint.h>
 
-static char policy_load[] = "/sys/fs/selinux/load";
-static char policy_live[] = "/sys/fs/selinux/policy";
+static const char policy_load[] = "/sys/fs/selinux/load";
+static const char policy_live[] = "/sys/fs/selinux/policy";
 
 extern int policydb_index_decls(policydb_t *p);
 
-void usage(const char *arg0)
+static void usage(const char *arg0)
 {
 	fprintf(stderr, "%s -s <source type> -t <target type> -c <class> -p <perm_list> -P <policy file>\n", arg0);
 	fprintf(stderr, "\tInject a rule\n\n");
@@ -47,7 +47,7 @@ void usage(const char *arg0)
 	exit(1);
 }
 
-void *cmalloc(const size_t s)
+static void *cmalloc(const size_t s)
 {
 	void *t = malloc(s);
 	if (!t) {
@@ -57,7 +57,7 @@ void *cmalloc(const size_t s)
 	return t;
 }
 
-type_datum_t *get_attr(char *type, policydb_t *policy)
+static type_datum_t *get_attr(char *type, policydb_t *policy)
 {
 	type_datum_t *attr;
 
@@ -70,14 +70,14 @@ type_datum_t *get_attr(char *type, policydb_t *policy)
 	return attr;
 }
 
-unsigned get_attr_id(char *type, policydb_t *policy)
+static unsigned get_attr_id(char *type, policydb_t *policy)
 {
 	type_datum_t *attr = get_attr(type, policy);
 
 	return attr ? attr->s.value : 0;
 }
 
-int set_attr(char *type, const int value, policydb_t *policy)
+static int set_attr(char *type, const int value, policydb_t *policy)
 {
 	type_datum_t *attr = get_attr(type, policy);
 
@@ -92,7 +92,7 @@ int set_attr(char *type, const int value, policydb_t *policy)
 	return 0;
 }
 
-type_datum_t *create_domain(char *d, policydb_t *policy)
+static type_datum_t *create_domain(char *d, policydb_t *policy)
 {
 	uint32_t value = 0;
 	unsigned i;
@@ -122,9 +122,9 @@ type_datum_t *create_domain(char *d, policydb_t *policy)
 	ebitmap_init(&policy->attr_type_map[value - 1]);
 	ebitmap_set_bit(&policy->type_attr_map[value - 1], value - 1, 1);
 
-	//Add the domain to all roles
+	/* add the domain to all roles */
 	for (i = 0; i < policy->p_roles.nprim; i++) {
-		//Not sure all those three calls are needed
+		/* not sure all those three calls are needed */
 		ebitmap_set_bit(&policy->role_val_to_struct[i]->types.negset, value - 1, 0);
 		ebitmap_set_bit(&policy->role_val_to_struct[i]->types.types, value - 1, 1);
 		type_set_expand(&policy->role_val_to_struct[i]->types, &policy->role_val_to_struct[i]->cache, policy, 0);
@@ -155,8 +155,8 @@ fail:
 	return NULL;
 }
 
-int add_irule(const int s, const int t, const int c, const int p,
-	      const int effect, const int not, policydb_t* policy)
+static int add_irule(const int s, const int t, const int c, const int p,
+		     const int effect, const int not, policydb_t* policy)
 {
 	int ret = 0;
 	unsigned avd = 1U << (p - 1);
@@ -185,9 +185,9 @@ int add_irule(const int s, const int t, const int c, const int p,
 	return ret;
 }
 
-int add_rule_auto(type_datum_t *src, type_datum_t *tgt, class_datum_t *cls,
-		  perm_datum_t *perm, const int effect, const int not,
-		  policydb_t *policy)
+static int add_rule_auto(type_datum_t *src, type_datum_t *tgt,
+			 class_datum_t *cls, perm_datum_t *perm,
+			 const int effect, const int not, policydb_t *policy)
 {
 	int ret = 0;
 	unsigned i;
@@ -267,8 +267,8 @@ int add_rule_auto(type_datum_t *src, type_datum_t *tgt, class_datum_t *cls,
 	return ret;
 }
 
-int add_rule(char *s, char *t, char *c, char *p,
-	     const int effect, const int not, policydb_t *policy)
+static int add_rule(char *s, char *t, char *c, char *p,
+		    const int effect, const int not, policydb_t *policy)
 {
 	int ret = 0;
 	type_datum_t *src = NULL, *tgt = NULL;
@@ -310,8 +310,8 @@ int add_rule(char *s, char *t, char *c, char *p,
 	return add_rule_auto(src, tgt, cls, perm, effect, not, policy);
 }
 
-int add_typerule(char *s, char *a, char **minusses, char *c,
-		 char *p, const int effect, const int not, policydb_t *policy)
+static int add_typerule(char *s, char *a, char **minusses, char *c,
+			char *p, const int effect, const int not, policydb_t *policy)
 {
 	int ret = 0;
 	unsigned i;
@@ -320,7 +320,7 @@ int add_typerule(char *s, char *a, char **minusses, char *c,
 	perm_datum_t *perm;
 	ebitmap_node_t *node;
 
-	//64(0kB) should be enough for everyone, right?
+	/* 64(0kB) should be enough for everyone, right? */
 	int m[64] = { -1 };
 
 	if (!(src = hashtab_search(policy->p_types.table, s))) {
@@ -370,11 +370,12 @@ int add_typerule(char *s, char *a, char **minusses, char *c,
 	ebitmap_for_each_bit(&policy->attr_type_map[tgt->s.value-1], node, i) {
 		if (ebitmap_node_get_bit(node, i)) {
 			int found = 0;
-			for (unsigned j = 0; m[j] != -1; j++) {
-				if (i == (unsigned)m[j]) {
-					found = 1;
-					break;
-				}
+			unsigned j;
+			for (j = 0; m[j] != -1; j++) {
+				if (i != (unsigned)m[j])
+					continue;
+				found = 1;
+				break;
 			}
 			if (found)
 				continue;
@@ -387,8 +388,8 @@ int add_typerule(char *s, char *a, char **minusses, char *c,
 	return ret;
 }
 
-int add_transition(char *srcS, char *origS, char *tgtS,
-		   char *c, policydb_t *policy)
+static int add_transition(char *srcS, char *origS, char *tgtS,
+			  char *c, policydb_t *policy)
 {
 	int ret = 0;
 	type_datum_t *src, *tgt, *orig;
@@ -437,8 +438,9 @@ int add_transition(char *srcS, char *origS, char *tgtS,
 	return ret;
 }
 
-int add_file_transition(char *srcS, char *origS, char *tgtS,
-			char *c, char* filename, policydb_t *policy)
+static int add_file_transition(char *srcS, char *origS, char *tgtS,
+			       char *c, const char* filename,
+			       policydb_t *policy)
 {
 	int ret = 0;
 	type_datum_t *src, *tgt, *orig;
@@ -477,7 +479,7 @@ int add_file_transition(char *srcS, char *origS, char *tgtS,
 	return ret;
 }
 
-int add_type(char *domainS, char *typeS, policydb_t *policy)
+static int add_type(char *domainS, char *typeS, policydb_t *policy)
 {
 	int typeId;
 	uint32_t i;
@@ -496,8 +498,8 @@ int add_type(char *domainS, char *typeS, policydb_t *policy)
 	if (!(typeId = get_attr_id(typeS, policy)))
 		return EINVAL;
 
-	//Now let's update all constraints!
-	//(kernel doesn't support (yet?) type_names rules)
+	/* Now let's update all constraints!
+	  (kernel doesn't support (yet?) type_names rules) */
 	for (i = 0; i < policy->p_classes.nprim; i++) {
 		cl = policy->class_val_to_struct[i];
 		for (n = cl->constraints; n; n = n->next) {
@@ -513,7 +515,7 @@ int add_type(char *domainS, char *typeS, policydb_t *policy)
 	return 0;
 }
 
-void print_policy_info(policydb_t *p, FILE *fp)
+static void print_policy_info(policydb_t *p, FILE *fp)
 {
 	if (!p) {
 		fprintf(fp, "Could not read policydb!\n");
@@ -534,8 +536,8 @@ void print_policy_info(policydb_t *p, FILE *fp)
 	fprintf(fp, "\n");
 }
 
-int load_policy(const char *filename,
-		policydb_t *policydb, struct policy_file *pf)
+static int load_policy(const char *filename,
+		       policydb_t *policydb, struct policy_file *pf)
 {
 	off_t sz;
 	void *map;
@@ -586,7 +588,7 @@ int load_policy(const char *filename,
 	return 0;
 }
 
-int apply_policy(policydb_t *policydb) {
+static int apply_policy(policydb_t *policydb) {
 	int fd, ret = 0;
 	void *policy;
 	size_t len;
@@ -612,7 +614,7 @@ int apply_policy(policydb_t *policydb) {
 	return ret;
 }
 
-int write_policy_to_file(policydb_t *policydb, const char *filename) {
+static int write_policy_to_file(policydb_t *policydb, const char *filename) {
 	int ret = 0;
 	FILE *fp;
 	struct policy_file pf;
@@ -637,10 +639,10 @@ int write_policy_to_file(policydb_t *policydb, const char *filename) {
 
 int main(int argc, char **argv)
 {
-	char *policy = NULL, *source = NULL, *target = NULL,
+	const char *policy = NULL, *outfile = NULL, *filetrans = NULL;
+	char *source = NULL, *target = NULL,
 		*class = NULL, *perm = NULL, *fcon = NULL,
-		*outfile = NULL, *permissive = NULL,
-		*attr = NULL, *filetrans = NULL;
+		*permissive = NULL, *attr = NULL;
 	int ch, ret = 0, info = 0, exists = 0, live = 0,
 		not = 0, permissive_value = 0, noaudit = 0;
 	sidtab_t sidtab;
@@ -852,7 +854,7 @@ int main(int argc, char **argv)
 			not ? "audit" : "noaudit",
 			source, target, class, perm);
 	} else {
-		//Add a rule to a whole set of typeattribute, not just a type
+		/* add a rule to a whole set of typeattribute, not just a type */
 		if (target && *target == '=') {
 			char *saveptr = NULL, *m = NULL;
 			char *vals[64];
