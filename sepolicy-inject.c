@@ -746,7 +746,7 @@ int main(int argc, char **argv)
 		if (!source && !class)
 			usage(argv[0]);
 		/* abort on any invalid existence checks */
-		if (permissive || source || target || class || perm ||
+		if (permissive || target || perm ||
 		    fcon || attr || filetrans || noaudit || outfile)
 			usage(argv[0]);
 	} else if (permissive) {
