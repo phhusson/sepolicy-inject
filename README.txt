@@ -3,6 +3,9 @@ Injects allow rules into binary SELinux kernel policies
 Injecting a rule:
 $ ./sepolicy-inject -s shell -t system -c file -p read -P sepolicy
 
+Injecting a rule into the running policy:
+$ ./sepolicy-inject -s shell -t system -c file -p read --live
+
 Injecting multiple permissions:
 $ ./sepolicy-inject -s shell -t system -c file -p read,write,open -P sepolicy
 
