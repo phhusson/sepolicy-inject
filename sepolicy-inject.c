@@ -587,7 +587,7 @@ int main(int argc, char **argv)
 			}
 	}
 
-	if (((!source || !target || !class || !perm) && !permissive && !fcon && !attr &&!filetrans && !exists && !auto_allow) || !policy)
+	if (((!source || !target || !class || !perm) && !permissive && !fcon && !attr &&!filetrans && !exists && !autoAllow) || !policy)
 		usage(argv[0]);
 
 	if(!outfile)
